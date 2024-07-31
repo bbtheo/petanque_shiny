@@ -6,4 +6,5 @@
 *.Rproj
 credentials/
 .secrets
-*/.secrets
+secrets/
+rsconnect/

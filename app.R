@@ -9,31 +9,43 @@ library(DT)
 source("get_games.R")
 source("functions.R")
 
+cat("started")
+print("started")
+
 sheet_url <<- "https://docs.google.com/spreadsheets/d/18NNCnQNt7DCJxT5NzNNg2QQCVRbrj9kWaIZWIVkPdPQ/edit"
 
 gs4_auth(path = readRDS("secrets/google_api"), cache = ".secrets")
 
-attendance <<- get_attendace_sheet()
-current_attendance <<- attendance %>% filter(time > Sys.time() - hours(7))
-
-
 sidebar <- sidebar(
   id = "sidebar",
-  open = current_attendance %>% nrow() == 0,
+  textInputIcon(
+    inputId = "label_liga",
+    label = "Liigan nimi:",
+    value = "",
+    placeholder = "Syötä tämä ensiksi",
+  ),
   selectizeInput(
     "participants",
     "Lisää osallistujat",
-    choices = attendance %>% distinct(name) %>% pull(),
-    selected = current_attendance %>% distinct(name) %>% pull(),
     multiple = T,
+    choices = NULL,
     options = list(create = TRUE)
+  ),
+  numericInputIcon(
+    inputId = "n_rounds",
+    label = "Kierrosten lukumäärä:",
+    value = 1,
+    min = 1,
+    max = 10,
+    step = 1,
   ),
   input_task_button(
     id = "action",
     label = "Aloita peli!",
     label_busy = "Luodaan otteluohjelmaa...",
     type = "primary"
-  )
+  ),
+  bg = "white"
   )
 
 
@@ -98,18 +110,53 @@ ui <- page_sidebar(
 # Define server logic required to draw a histogram
 server <- function(input, output, session) {
 
+  games_setup <- get_games_sheet()
+
   games <- reactiveValues(
-    new = get_new_games(),
-    old = get_old_games()
-    )
+    new = NULL,
+    old = NULL,
+    rest = NULL
+  )
+
+  observe({
+      games$new <-  games_setup %>%
+        filter(label == input$label_liga, ended == 0)
+      games$old = games_setup %>%
+        filter(label == input$label_liga, ended == 1)
+      games$rest <-  games_setup %>%
+        filter(label != input$label_liga)
+  }) %>%
+    bindEvent(input$label_liga)
+
 
   points <- reactiveValues(
     player_1 = NA,
     player_2 = NA
   )
 
+
+
   observe({
-    games$new <-  get_games(input$participants) %>%
+
+    if(input$label_liga != ""){
+
+      choices <- c(games$old$player_1, games$old$player_2) %>% unique() %>% as.list()
+      selects <- c(games$new$player_1, games$new$player_2) %>% unique() %>% as.list()
+
+      print(selects)
+
+      updateSelectizeInput(
+        session = session,
+        inputId = "participants",
+        choices = choices,
+        selected = selects
+        )
+    }
+    }) %>%
+    bindEvent(input$label_liga)
+
+  observe({
+    games$new <- get_games(input$participants) %>%
       select(-round) %>%
       mutate(
         set_dttm = Sys.time(),
@@ -117,16 +164,23 @@ server <- function(input, output, session) {
         player_2_point = NA,
         order_num = row_number(),
         play_dttm = NA,
+        label = input$label_liga,
+        ended = 0
       )
   }) %>%
   bindEvent(input$action)
 
   observe({
-    bind_rows(
+    load_data <- bind_rows(
       games$old,
+      games$rest,
       games$new
-    ) %>%
-    write_sheet(ss = sheet_url, sheet = 'games')
+    )
+
+    if(!is.null(load_data)){
+      load_data %>%
+        write_sheet(ss = sheet_url, sheet = 'games')
+    }
   }) %>%
     bindEvent(!is.null(games$new))
 
@@ -134,7 +188,8 @@ server <- function(input, output, session) {
     attendace_data <- tibble(
       time = Sys.time(),
       name = input$participants,
-      left = NA
+      left = 0,
+      label = input$label_liga
     )
     sheet_append(sheet_url, data = attendace_data, sheet = 'attendance')
   }) %>%
@@ -146,10 +201,9 @@ server <- function(input, output, session) {
       id = "sidebar"
       )
     }) %>%
-    bindEvent((input$action))
+    bindEvent((input$action) | nrow(games$new) > 0)
 
   play_turn <- reactive({
-
     games$new %>%
       filter(
           is.na(player_1_point),
@@ -158,8 +212,8 @@ server <- function(input, output, session) {
       filter(
         order_num == min(order_num)
       )
-
-  })
+  })%>%
+    bindEvent(!is.null(games$new))
 
   output$player_header <-
     renderText({
@@ -241,9 +295,6 @@ server <- function(input, output, session) {
         na.rm = T
         ) %>%
       arrange(desc(point))
-
-
-
   })
 
   output$leader_board <- DT::renderDT({
@@ -263,8 +314,7 @@ server <- function(input, output, session) {
 
   observe({
     games$new[(
-      games$new$player_2 == play_turn()$player_2 &
-      games$new$player_1 == play_turn()$player_1),
+      games$new$order_num == play_turn()$order_num),
       c("player_1_point","player_2_point", "play_dttm")] <- list(
         points$player_1 %>% as.integer(),
         points$player_2 %>% as.integer(),
@@ -274,13 +324,8 @@ server <- function(input, output, session) {
     bindEvent(input$save_points)
 
 
-
-
-
   observe({
-    games$new[(
-      games$new$player_2 == play_turn()$player_2 &
-      games$new$player_1 == play_turn()$player_1),
+    games$new[games$new$order_num == play_turn()$order_num,
       c("order_num")] <- max(games$new$order_num) + 1
     }) %>%
     bindEvent(input$skip_button)
