@@ -22,7 +22,7 @@ sidebar <- sidebar(
     inputId = "label_liga",
     label = "Liigan nimi:",
     value = "",
-    placeholder = "Täytä ensiksi. Voit myös keksiä uuden.",
+    placeholder = "Aloita tästä",
   ),
   selectizeInput(
     "participants",
@@ -380,6 +380,6 @@ server <- function(input, output, session) {
 
 }
 
-# Run the application
+
 shinyApp(ui = ui, server = server)
 
