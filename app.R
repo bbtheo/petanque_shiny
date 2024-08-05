@@ -22,7 +22,7 @@ sidebar <- sidebar(
     inputId = "label_liga",
     label = "Liigan nimi:",
     value = "",
-    placeholder = "Syötä tämä ensiksi",
+    placeholder = "Täytä ensiksi. Voit myös keksiä uuden.",
   ),
   selectizeInput(
     "participants",
@@ -110,23 +110,34 @@ ui <- page_sidebar(
 # Define server logic required to draw a histogram
 server <- function(input, output, session) {
 
-  games_setup <- get_games_sheet()
+
+
+  games_setup <- reactive({
+      get_games_sheet()
+    }) %>%
+    bindEvent(input$label_liga)
 
   games <- reactiveValues(
     new = NULL,
+    cache_new = NULL,
     old = NULL,
     rest = NULL
   )
 
   observe({
-      games$new <-  games_setup %>%
-        filter(label == input$label_liga, ended == 0)
-      games$old = games_setup %>%
+      games$new <-  games_setup() %>%
+        filter(
+          label == input$label_liga,
+          ended == 0)
+      games$old = games_setup() %>%
         filter(label == input$label_liga, ended == 1)
-      games$rest <-  games_setup %>%
-        filter(label != input$label_liga)
-  }) %>%
-    bindEvent(input$label_liga)
+      games$rest <-  games_setup() %>%
+        filter(
+          label != input$label_liga
+        )
+      }
+    ) %>%
+    bindEvent(games_setup())
 
 
   points <- reactiveValues(
@@ -138,24 +149,47 @@ server <- function(input, output, session) {
 
   observe({
 
-    if(input$label_liga != ""){
+    league_names <- games_setup() %>%
+      filter(label == input$label_liga)
 
-      choices <- c(games$old$player_1, games$old$player_2) %>% unique() %>% as.list()
-      selects <- c(games$new$player_1, games$new$player_2) %>% unique() %>% as.list()
+    if(nrow(league_names) > 0){
 
-      print(selects)
+      old <- league_names %>% filter(ended == 1)
+      new <- league_names %>% filter(ended == 0)
+
+      choices <- c(league_names$player_1, league_names$player_2) %>%
+        unique() %>%
+        as.list()
+      selects <- c(new$player_1, new$player_2) %>%
+        unique() %>%
+        as.list()
 
       updateSelectizeInput(
         session = session,
         inputId = "participants",
         choices = choices,
         selected = selects
-        )
+      )
+    } else {
+
+      updateSelectizeInput(
+        session = session,
+        inputId = "participants",
+        choices = list(),
+        selected = list()
+      )
     }
-    }) %>%
-    bindEvent(input$label_liga)
+
+  }) %>%
+  bindEvent(input$label_liga)
 
   observe({
+
+    games$rest <- bind_rows(
+      games$rest,
+      games$new
+    )
+
     games$new <- get_games(input$participants) %>%
       select(-round) %>%
       mutate(
@@ -177,7 +211,7 @@ server <- function(input, output, session) {
       games$new
     )
 
-    if(!is.null(load_data)){
+    if(nrow(load_data) > 0){
       load_data %>%
         write_sheet(ss = sheet_url, sheet = 'games')
     }
@@ -197,9 +231,9 @@ server <- function(input, output, session) {
 
   # after the input
   observe({
-    sidebar_toggle(
-      id = "sidebar"
-      )
+    if(nrow(games$new) > 0){
+      sidebar_toggle(session = session, id = "sidebar", )
+    }
     }) %>%
     bindEvent((input$action) | nrow(games$new) > 0)
 
@@ -237,7 +271,17 @@ server <- function(input, output, session) {
 
 
 
+    is_finished <- reactive({
+      sum(!is.na(games$new$player_1_point)) == length(games$new$player_1_point) & nrow(games$new) > 0
 
+    })
+
+    observe({
+      if(is_finished()){
+        games$new$ended <- rep(1, nrow(games$new))
+      }
+    }) %>%
+      bindEvent(is_finished())
 
   observe({
     values <- str_split(input$game_result, '-')
@@ -251,6 +295,7 @@ server <- function(input, output, session) {
 
   leader_board <- reactive({
 
+    if( nrow(games$new) > 0){
     data <- games$new %>%
       mutate(
         player_1_win = if_else(player_1_point > player_2_point, 1, 0),
@@ -295,7 +340,10 @@ server <- function(input, output, session) {
         na.rm = T
         ) %>%
       arrange(desc(point))
-  })
+    }
+
+  }) %>%
+  bindEvent(games$new)
 
   output$leader_board <- DT::renderDT({
     datatable(leader_board())
