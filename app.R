@@ -233,6 +233,18 @@ server <- function(input, output, session) {
     updateNumericInput(session, "opt_n_rounds", value = new)
   }, ignoreInit = TRUE)
 
+  # Surface bracketeer's caveat in the UI: an odd number of rounds with home/away
+  # may not split evenly. Triggered when the user sets an odd value (the toggle
+  # itself keeps it even, so this only fires on a manual odd entry).
+  observeEvent(input$opt_n_rounds, {
+    n <- input$opt_n_rounds
+    if (isTRUE(input$opt_home_away) && !is.null(n) && !is.na(n) && n %% 2 == 1) {
+      showNotification(
+        "Pariton kierrosmäärä koti- ja vierasotteluissa: parit eivät välttämättä jakaudu tasan.",
+        type = "warning", duration = 5)
+    }
+  }, ignoreInit = TRUE)
+
   # Start a new instance under the current series.
   observeEvent(input$action, {
     req(nzchar(input$series %||% ""))
