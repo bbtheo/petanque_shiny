@@ -98,6 +98,69 @@ mobile_dt <- function(df, tt = identity, paging = FALSE, page = 8) {
                                            zeroRecords = tt("Ei vielä dataa"))))
 }
 
+# --- Match view: a bracket for elimination stages, a table otherwise ---------
+
+ELIM_TYPES <- c("main", "winners", "losers", "grand_final")
+
+stage_title   <- function(st, tr) switch(st, groups = tr("Lohkot"), ko = tr("Pudotuspelit"), st)
+bracket_label <- function(bt, tr) switch(bt, winners = tr("Voittajien kaavio"),
+                                         losers = tr("Häviäjien kaavio"),
+                                         grand_final = tr("Loppuottelu"), "")
+
+# A column-per-round bracket from matches with `round`/`position`/`winner`.
+bracket_html <- function(bm, tr) {
+  cols <- lapply(sort(unique(bm$round)), function(r) {
+    rm <- bm[bm$round == r, , drop = FALSE]; rm <- rm[order(rm$position), , drop = FALSE]
+    boxes <- lapply(seq_len(nrow(rm)), function(i) {
+      mt <- rm[i, ]; w <- mt$winner
+      prow <- function(p, sc) div(
+        class = paste("bracket-row", if (!is.na(w) && identical(w, p)) "win" else ""),
+        span(class = "nm", if (is.na(p)) "—" else p),
+        span(if (is.na(sc)) "" else as.character(sc)))
+      div(class = "bracket-match", prow(mt$participant1, mt$score1), prow(mt$participant2, mt$score2))
+    })
+    div(class = "bracket-round", div(class = "bracket-round-title", paste0(tr("Kierros"), " ", r)), boxes)
+  })
+  div(class = "bracket", cols)
+}
+
+stage_table <- function(sm, tr) {
+  sm <- sm[order(sm$round, sm$position), , drop = FALSE]
+  rows <- lapply(seq_len(nrow(sm)), function(i) {
+    mt <- sm[i, ]
+    tags$tr(tags$td(mt$participant1), tags$td(mt$participant2),
+            tags$td(if (is.na(mt$score1)) "" else paste0(mt$score1, "–", mt$score2)),
+            tags$td(if (identical(mt$status, "complete")) "✓" else "·"))
+  })
+  tags$table(class = "table table-sm table-striped mb-0",
+    tags$thead(tags$tr(tags$th(tr("Pelaaja 1")), tags$th(tr("Pelaaja 2")),
+                       tags$th(tr("Tulos")), tags$th(tr("Tila")))),
+    tags$tbody(rows))
+}
+
+# Per stage: bracket for elimination bracket_types, table for round-robin/Swiss.
+matches_view <- function(trn, tr) {
+  m <- bracketeer::matches(trn, status = "all")
+  if (is.null(m) || nrow(m) == 0) return(div(class = "text-muted p-2", tr("Ei vielä dataa")))
+  stages <- unique(m$stage_id); multi <- length(stages) > 1
+  sections <- list()
+  add <- function(x) sections[[length(sections) + 1]] <<- x
+  for (st in stages) {
+    sm <- m[m$stage_id == st, , drop = FALSE]
+    if (multi) add(tags$div(class = "bracket-section-title", stage_title(st, tr)))
+    if (any(sm$bracket_type %in% ELIM_TYPES)) {
+      for (bt in unique(sm$bracket_type)) {
+        lbl <- bracket_label(bt, tr)
+        if (nzchar(lbl)) add(tags$div(class = "bracket-round-title text-start", lbl))
+        add(bracket_html(sm[sm$bracket_type == bt, , drop = FALSE], tr))
+      }
+    } else {
+      add(stage_table(sm, tr))
+    }
+  }
+  div(sections)
+}
+
 # --- Theme & polish ----------------------------------------------------------
 
 app_theme <- bs_theme(version = 5, bootswatch = "minty",
@@ -113,6 +176,16 @@ app_css <- HTML("
   table.dataTable td, table.dataTable th { white-space: nowrap; }
   .sidebar-help { font-size: .8rem; opacity: .7; }
   .navbar .radio-group-buttons { margin-bottom: 0; }
+  /* March-Madness style bracket */
+  .bracket { display: flex; align-items: stretch; overflow-x: auto; padding: .5rem .25rem; }
+  .bracket-round { display: flex; flex-direction: column; justify-content: space-around; min-width: 165px; }
+  .bracket-round-title { font-size: .68rem; letter-spacing: .05em; text-transform: uppercase; opacity: .55; text-align: center; margin: 0 .6rem .25rem; }
+  .bracket-match { background: #fff; border: 1px solid rgba(0,0,0,.1); border-radius: .5rem; margin: .4rem .6rem; box-shadow: 0 1px 2px rgba(0,0,0,.06); overflow: hidden; }
+  .bracket-row { display: flex; justify-content: space-between; gap: .5rem; padding: .3rem .55rem; font-size: .85rem; }
+  .bracket-row + .bracket-row { border-top: 1px solid rgba(0,0,0,.08); }
+  .bracket-row.win { font-weight: 700; background: rgba(31,122,109,.10); }
+  .bracket-row .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bracket-section-title { font-weight: 600; font-size: .85rem; opacity: .8; margin: .5rem .25rem .1rem; }
 ")
 
 # --- UI ----------------------------------------------------------------------
@@ -186,7 +259,7 @@ ui <- page_navbar(
       )
     ),
     card(card_header(span(icon("ranking-star"), " ", i18n$t("Sarjataulukko"))), DTOutput("leader_board")),
-    card(card_header(span(icon("list-ol"), " ", i18n$t("Otteluohjelma"))), DTOutput("matches"))
+    card(card_header(span(icon("sitemap"), " ", i18n$t("Otteluohjelma"))), uiOutput("matches_view"))
   ),
   nav_panel(
     title = tagList(icon("chart-line"), " ", i18n$t("Sarjatilastot")),
@@ -413,14 +486,9 @@ server <- function(input, output, session) {
     mobile_dt(d, tr)
   })
 
-  output$matches <- renderDT({
+  output$matches_view <- renderUI({
     req(rv$trn)
-    m <- bracketeer::matches(rv$trn, status = "all"); req(!is.null(m), nrow(m) > 0)
-    d <- data.frame(m$participant1, m$participant2,
-      ifelse(is.na(m$score1), "", paste0(m$score1, "–", m$score2)),
-      ifelse(m$status == "complete", "✓", "·"), check.names = FALSE)
-    names(d) <- c(tr("Pelaaja 1"), tr("Pelaaja 2"), tr("Tulos"), tr("Tila"))
-    mobile_dt(d, tr, paging = TRUE, page = 8)
+    matches_view(rv$trn, tr)
   })
 
   output$series_stats <- renderDT({

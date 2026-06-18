@@ -2297,7 +2297,7 @@
   },
   "files": {
     "app.R": {
-      "checksum": "a5954865b88a989940d9cf96c66c6ff3"
+      "checksum": "0b81f69f220470721d00d51c68ff1412"
     },
     "renv.lock": {
       "checksum": "f49490a6a94b926226dc33d4168fa94e"
@@ -2309,7 +2309,7 @@
       "checksum": "efed0f766cd997fb0c932b722a145baa"
     },
     "translations/translation.json": {
-      "checksum": "30e96456133514c11d2e5b2029e85b2e"
+      "checksum": "8f846228a5234fd7eb4ff88c18fb1f9c"
     }
   },
   "users": null
