@@ -97,6 +97,12 @@ parse_score <- function(s) as.integer(strsplit(s, "-", fixed = TRUE)[[1]])
 
 gather_options <- function(input) {
   opts <- list(seed = "standard")
+  # Game length is orthogonal to format: "short" = one mène on the ±3 slider
+  # (default), "long" = play to a target score (default 13). Stored in the spec
+  # options; it affects only score entry/validation, not the bracket build.
+  opts$game_mode <- if (isTRUE(input$opt_long_game)) "long" else "short"
+  if (identical(opts$game_mode, "long"))
+    opts$target_score <- max(1L, as.integer(input$opt_target_score %||% 13L))
   switch(input$format,
     round_robin = {
       opts$home_away <- isTRUE(input$opt_home_away)
@@ -108,6 +114,16 @@ gather_options <- function(input) {
     group_knockout = { opts$groups <- as.integer(input$opt_groups); opts$advance_per_group <- as.integer(input$opt_advance) }
   )
   opts
+}
+
+# The winning ("max") score for a tournament — the single source of truth used
+# for withdrawal forfeits, so the leaver's opponent is ALWAYS awarded the full
+# winning score: the configured target in a long game (13, 7, or anything in
+# between), or 3 (a max mène) in a short game. Falls back to 13/3 if missing.
+win_score_for <- function(opts) {
+  if (identical(opts$game_mode %||% "short", "long"))
+    max(1L, as.integer(opts$target_score %||% 13L))
+  else 3L
 }
 
 # Translate a bracketeer build error to a friendly message (tt = translator).
@@ -299,6 +315,9 @@ app_sidebar <- sidebar(
     opt_panel("group_knockout",
       numericInput("opt_groups", i18n$t("Lohkojen määrä"), value = 2, min = 1, step = 1),
       numericInput("opt_advance", i18n$t("Jatkoon per lohko"), value = 2, min = 1, step = 1)),
+    materialSwitch("opt_long_game", i18n$t("Pitkä peli (pisteisiin)"), status = "primary"),
+    conditionalPanel("input.opt_long_game == true",
+      numericInput("opt_target_score", i18n$t("Voittoon vaadittavat pisteet"), value = 13, min = 1, step = 1)),
     selectizeInput("participants", i18n$t("Osallistujat"), choices = NULL, multiple = TRUE,
                    options = list(create = TRUE, placeholder = ui_txt("Lisää pelaajat"))),
     input_task_button("action", i18n$t("Aloita peli!"), label_busy = i18n$t("Luodaan otteluohjelmaa..."),
@@ -331,7 +350,7 @@ ui <- page_navbar(
       uiOutput("match_area"),
       conditionalPanel(
         "output.has_match",
-        sliderTextInput("game_result", NULL, choices = SCORE_CHOICES, selected = "0-0", width = "100%"),
+        uiOutput("score_entry"),
         div(class = "d-grid gap-2",
           input_task_button("save_points", i18n$t("Tallenna pisteet"), label_busy = i18n$t("Tallennetaan..."),
                             type = "primary", class = "btn-lg"),
@@ -517,7 +536,14 @@ server <- function(input, output, session) {
   observeEvent(input$save_points, {
     req(rv$trn, rv$label)
     m  <- pick_match(rv$trn, rv$deferred); req(!is.null(m))
-    sc <- parse_score(input$game_result)
+    if (identical(rv$spec$options$game_mode %||% "short", "long")) {
+      s1 <- suppressWarnings(as.integer(input$score_p1)); s2 <- suppressWarnings(as.integer(input$score_p2))
+      if (length(s1) == 0 || length(s2) == 0 || is.na(s1) || is.na(s2)) {
+        showNotification(tr("Syötä molempien pelaajien pisteet."), type = "error"); return() }
+      sc <- c(s1, s2)
+    } else {
+      sc <- parse_score(input$game_result)
+    }
     new_trn <- tryCatch(
       bracketeer::result(rv$trn, m$stage_id, match = m$match_id, score = sc, overwrite = FALSE),
       error = function(e) {
@@ -552,7 +578,8 @@ server <- function(input, output, session) {
     store$results <- dplyr::bind_rows(store$results, pend$rows)
     rv$trn        <- pend$new_trn
     rv$deferred   <- character(0)
-    updateSliderTextInput(session, "game_result", selected = "0-0")
+    # score_entry is a uiOutput keyed on rv$trn, so it re-renders fresh (slider
+    # back to 0-0 / steppers back to 0) for the next match automatically.
     removeModal()
   }, ignoreInit = TRUE)
 
@@ -587,7 +614,7 @@ server <- function(input, output, session) {
   observeEvent(input$withdraw_btn, {
     req(rv$trn, rv$label)
     player <- input$withdraw_player; req(nzchar(player %||% ""))
-    rows <- forfeit_player_rows(rv$trn, rv$label, player)
+    rows <- forfeit_player_rows(rv$trn, rv$label, player, win_score = win_score_for(rv$spec$options))
     if (is.null(rows)) {
       showNotification(tr("Pelaajalla ei ole avoimia otteluita."), type = "warning"); return() }
     pend$withdraw <- rows
@@ -640,6 +667,24 @@ server <- function(input, output, session) {
     !is.null(rv$trn) && !tournament_complete(rv$trn) && !is.null(pick_match(rv$trn, rv$deferred))
   })
   outputOptions(output, "has_match", suspendWhenHidden = FALSE)
+
+  # Score entry adapts to the tournament's game mode: a ±3 mène slider (short) or
+  # two 0..target steppers labelled with the players (long). Keyed on rv$trn so
+  # it re-renders fresh after every save/skip.
+  output$score_entry <- renderUI({
+    req(rv$trn)
+    m <- pick_match(rv$trn, rv$deferred); req(!is.null(m))
+    if (identical(rv$spec$options$game_mode %||% "short", "long")) {
+      tgt <- as.integer(rv$spec$options$target_score %||% 13L)
+      layout_columns(
+        col_widths = c(6, 6), fill = FALSE,
+        numericInput("score_p1", m$participant1, value = 0, min = 0, max = tgt, step = 1),
+        numericInput("score_p2", m$participant2, value = 0, min = 0, max = tgt, step = 1))
+    } else {
+      sliderTextInput("game_result", NULL, choices = SCORE_CHOICES, selected = "0-0", width = "100%")
+    }
+  })
+  outputOptions(output, "score_entry", suspendWhenHidden = FALSE)
 
   output$has_trn <- reactive({ !is.null(rv$trn) })
   outputOptions(output, "has_trn", suspendWhenHidden = FALSE)
