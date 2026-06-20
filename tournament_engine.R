@@ -160,6 +160,28 @@ tournament_complete <- function(trn) {
 
 # --- Persistence helpers -----------------------------------------------------
 
+# Result rows that forfeit every *pending* match a withdrawing player is in.
+# A withdrawal never mutates the write-once spec: it is just decisive results
+# appended to the log (leaver 0, opponent `win_score`), so reconstruction stays
+# deterministic and last-write-wins still applies. Round-robin/elim/groups
+# forfeit all the player's open matches at once; Swiss only materializes the
+# current round, so a Swiss leaver is forfeited round-by-round as they resurface.
+# Returns NULL when the player has no pending matches.
+forfeit_player_rows <- function(trn, label, player, win_score = 3L,
+                                recorded_dttm = Sys.time()) {
+  p <- pending_matches(trn)
+  if (is.null(p) || nrow(p) == 0) return(NULL)
+  inv <- p[p$participant1 == player | p$participant2 == player, , drop = FALSE]
+  if (nrow(inv) == 0) return(NULL)
+  rows <- lapply(seq_len(nrow(inv)), function(i) {
+    m  <- inv[i, ]
+    sc <- if (identical(m$participant1, player)) c(0L, win_score) else c(win_score, 0L)
+    make_result_rows(label, m$stage_id, m$match_id, m$participant1, m$participant2,
+                     sc, recorded_dttm = recorded_dttm)
+  })
+  do.call(rbind, rows)
+}
+
 # Build the results-sheet rows for one recorded match (one row per leg).
 # `score` is the interleaved vector passed to bracketeer::result().
 make_result_rows <- function(label, stage, match, player_1, player_2, score,

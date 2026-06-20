@@ -2,6 +2,7 @@
   "languages": ["fi", "en"],
   "translation": [
     { "fi": "Petankki", "en": "Pétanque" },
+    { "fi": "Petankkiliiga", "en": "Pétanque League" },
     { "fi": "Sarja", "en": "Series" },
     { "fi": "Kirjoita sarjan nimi", "en": "Type the series name" },
     { "fi": "Toistuva liiga tai ryhmä (esim. \"Tiistailiiga\"). Nimi toimii salasanana – jaa se vain pelaajillesi.", "en": "A recurring league or group (e.g. \"Tuesday League\"). The name works as a password – share it only with your players." },
@@ -72,6 +73,26 @@
     { "fi": "Turnausta ei voitu ladata: ", "en": "Could not load the tournament: " },
     { "fi": "Asetukset eivät kelpaa: ", "en": "Invalid settings: " },
     { "fi": "Pariton kierrosmäärä koti- ja vierasotteluissa: parit eivät välttämättä jakaudu tasan.", "en": "Odd number of rounds with home & away: pairings may not split evenly." },
-    { "fi": "Joka lohkoon tarvitaan vähintään %d pelaajaa (lohkoja %d, jatkoon %d/lohko). Lisää pelaajia tai vähennä lohkoja/jatkoonpääsijöitä.", "en": "Each group needs at least %d players (groups %d, %d advancing/group). Add players or reduce groups/advancers." }
+    { "fi": "Joka lohkoon tarvitaan vähintään %d pelaajaa (lohkoja %d, jatkoon %d/lohko). Lisää pelaajia tai vähennä lohkoja/jatkoonpääsijöitä.", "en": "Each group needs at least %d players (groups %d, %d advancing/group). Add players or reduce groups/advancers." },
+    { "fi": "Finaali", "en": "Final" },
+    { "fi": "Välierä", "en": "Semi-final" },
+    { "fi": "Puolivälierä", "en": "Quarter-final" },
+    { "fi": "Vahvista tulos", "en": "Confirm result" },
+    { "fi": "Tasapeli – varmista että tulos on oikein.", "en": "A draw – make sure the result is correct." },
+    { "fi": "Vahvista", "en": "Confirm" },
+    { "fi": "Peruuta", "en": "Cancel" },
+    { "fi": "Päivitys epäonnistui: ", "en": "Refresh failed: " },
+    { "fi": "Pelaajien hallinta", "en": "Players" },
+    { "fi": "Turnaus ei ole vielä alkanut – voit lisätä tai poistaa osallistujia.", "en": "The tournament hasn't started yet – you can add or remove participants." },
+    { "fi": "Päivitä osallistujat", "en": "Update participants" },
+    { "fi": "Päivitetään...", "en": "Updating..." },
+    { "fi": "Turnaus on jo alkanut – osallistujia ei voi enää muokata.", "en": "The tournament has already started – participants can no longer be changed." },
+    { "fi": "Pelaaja, joka poistuu, häviää kaikki jäljellä olevat ottelunsa.", "en": "A withdrawing player forfeits all their remaining matches." },
+    { "fi": "Poistuva pelaaja", "en": "Withdrawing player" },
+    { "fi": "Poista pelaaja turnauksesta", "en": "Withdraw player" },
+    { "fi": "Pelaajalla ei ole avoimia otteluita.", "en": "The player has no open matches." },
+    { "fi": "Pelaaja poistettiin ja jäljellä olevat ottelut hävittiin.", "en": "Player withdrawn; their remaining matches were forfeited." },
+    { "fi": "Osallistujat päivitettiin.", "en": "Participants updated." },
+    { "fi": "Pelaajia on liian vähän lohkoihin nähden.", "en": "Too few players for the number of groups." }
   ]
 }

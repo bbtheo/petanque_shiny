@@ -93,11 +93,15 @@ series_names <- function(tournaments_df) {
   sort(unique(tournaments_df$series))
 }
 
-# Instances belonging to a series, newest first.
+# Instances belonging to a series, newest first. A label may legitimately repeat
+# when a pre-start roster edit appends a *superseding* spec row (same label, new
+# seed); collapse to the newest row per label so the instance list shows it once
+# and reconstruction uses the latest spec.
 instances_for_series <- function(tournaments_df, series) {
   if (is.null(tournaments_df) || !nrow(tournaments_df)) return(tournaments_df)
   df <- tournaments_df[tournaments_df$series == series, , drop = FALSE]
-  df[order(df$created_dttm, decreasing = TRUE), , drop = FALSE]
+  df <- df[order(df$created_dttm, decreasing = TRUE), , drop = FALSE]
+  df[!duplicated(df$label), , drop = FALSE]
 }
 
 # Results rows for one instance.
@@ -134,7 +138,7 @@ spec_from_row <- function(tournaments_df, label) {
   if (is.null(tournaments_df) || !nrow(tournaments_df)) return(NULL)
   row <- tournaments_df[tournaments_df$label == label, , drop = FALSE]
   if (!nrow(row)) return(NULL)
-  row <- row[nrow(row), ]  # last wins if a label somehow repeats
+  row <- row[order(row$created_dttm, decreasing = TRUE), , drop = FALSE][1, ]  # newest spec wins (pre-start supersede)
   list(
     series       = row$series,
     label        = row$label,
@@ -148,9 +152,14 @@ spec_from_row <- function(tournaments_df, label) {
 
 # --- Writes (append-only) ----------------------------------------------------
 
-# A unique, human-readable instance id under a series.
+# A unique, human-readable instance id under a series. The short suffix keeps two
+# organizers who start the same series in the same second from colliding on the
+# label (the results partition key); it is not shown in the UI, which lists
+# instances by created_dttm + format. tempfile() is used for the token so we
+# never touch the global RNG (which would interfere with seed determinism).
 make_label <- function(series) {
-  paste0(series, " · ", format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "Europe/Helsinki"))
+  suffix <- substr(basename(tempfile()), 5L, 10L)
+  paste0(series, " · ", format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "Europe/Helsinki"), " · ", suffix)
 }
 
 # A reproducible RNG seed to pin and store with the spec.
