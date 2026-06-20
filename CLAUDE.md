@@ -53,8 +53,12 @@ persistence round-trip) are proven by the `dev/` scripts.
   fully qualified `bracketeer::…` because the app's other packages mask `matches()` and `top_n()`.
 - **`sheets_io.R`** — event-sourced Google Sheets persistence + `ensure_sheets()` bootstrap + auth.
 - **`app.R`** — `bslib` UI + server. Sidebar = series picker + instance picker + format selector +
-  per-format option inputs + participants. Main = "Peli" tab (current match, score slider,
-  save/skip/refresh, schedule, leaderboard) and "Sarjatilastot" tab.
+  per-format option inputs + participants. Main = "Peli" tab (current match with a phase badge for
+  elimination rounds via `round_phase_label()`, score slider, confirm-on-save dialog, save/skip/refresh,
+  schedule, leaderboard, a player-management card) and "Sarjatilastot" tab. Slow Sheets I/O (save,
+  refresh, create, withdraw) runs through `ExtendedTask`s wired to `input_task_button`s; `run_async()`
+  dispatches each job to a **mirai** daemon, or falls back to synchronous execution when mirai isn't
+  installed (so the deploy works either way — install mirai + re-snapshot to enable async).
 
 ### Persistence: event sourcing on Google Sheets (the key idea)
 
@@ -65,8 +69,12 @@ connections safe (no full-overwrite clobber) and tournaments resumable across da
 Two tabs (legacy `games`/`attendance` tabs are left untouched; this is greenfield):
 
 - **`tournaments`** (`col_types = "ccTccci"`): `series`, `label` (unique instance id), `created_dttm`,
-  `format`, `participants` (JSON array), `options` (JSON object), `rng_seed`. One **write-once** row
-  per tournament instance.
+  `format`, `participants` (JSON array), `options` (JSON object), `rng_seed`. Normally one **write-once**
+  row per instance. The one exception: a **pre-start roster edit** (only while the instance has zero
+  results) appends a *superseding* row with the **same `label`** and a fresh `rng_seed`; `spec_from_row`
+  and `instances_for_series` both resolve to the **newest row per label**, so reconstruction uses the
+  edited roster and the dropdown shows the instance once. `make_label` carries a short random suffix so
+  two organizers starting the same series in the same second don't collide on the partition key.
 - **`results`** (`col_types = "cccicciiT"`): `label`, `stage`, `match`, `leg`, `player_1`, `player_2`,
   `score_1`, `score_2`, `recorded_dttm`. **Append-only** game-log.
 
@@ -93,6 +101,12 @@ bracket's own pending order. Invariants that make this work (all verified in `de
 - **Swiss has no `winner()`** (it's `NA`); completion = all stages complete (`tournament_complete()`).
 - **Multi-leg / best-of** record one results row per `leg`; the engine interleaves them into the
   `score` vector `bracketeer::result()` expects.
+- **Withdrawals are forfeits, not roster mutations.** bracketeer has no add/remove-participant verb,
+  so a player leaving mid-tournament is handled by `forfeit_player_rows()` appending decisive results
+  (leaver 0, opponent 3) for each of their *pending* matches. Nothing about reconstruction changes —
+  they're ordinary appended results. (Swiss only materializes the current round, so a Swiss leaver is
+  forfeited round-by-round as they resurface.) Mid-tournament *joining* is not supported (it would
+  change match ids the log keys on); adding players is allowed only pre-start via the supersede path.
 
 ## Gotchas
 
@@ -102,3 +116,11 @@ bracket's own pending order. Invariants that make this work (all verified in `de
 - `SHEET_URL` is hard-coded in `app.R`.
 - **Attendance tracking was dropped** in the bracketeer rewrite (the old `attendance` tab/feature). The
   `attendance` tab still exists untouched; series stats cover "appearances". Re-add if needed.
+- **i18n live-switch has two rules.** shiny.i18n's `update_lang()` only swaps elements that `i18n$t()`
+  rendered as `<span class="i18n" data-key=…>`, and `i18n$t()` only emits that span once
+  `i18n$use_js()` has run. So (1) **`i18n$use_js()` is called at the top, before any UI is built** — add
+  new static `i18n$t()` UI *after* it or the string stays stuck in Finnish; and (2) `i18n$t()` in an
+  **attribute / `<select>`-choice position** (placeholder, HTML `title=`, choice *names*) renders a
+  `<span>`, which is wrong there — use **`ui_txt()`** (plain string) and refresh it in the `input$lang`
+  observer. bslib *content* args like `page_navbar(title=)`/`sidebar(title=)` take `i18n$t()` fine.
+  Server-rendered text uses the per-session `tr()` and re-renders reactively, so it's unaffected.
