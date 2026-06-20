@@ -54,8 +54,12 @@ persistence round-trip) are proven by the `dev/` scripts.
 - **`sheets_io.R`** — event-sourced Google Sheets persistence + `ensure_sheets()` bootstrap + auth.
 - **`app.R`** — `bslib` UI + server. Sidebar = series picker + instance picker + format selector +
   per-format option inputs + participants. Main = "Peli" tab (current match with a phase badge for
-  elimination rounds via `round_phase_label()`, score slider, confirm-on-save dialog, save/skip/refresh,
-  schedule, leaderboard, a player-management card) and "Sarjatilastot" tab. Slow Sheets I/O (save,
+  elimination rounds via `round_phase_label()`, mode-aware score entry, confirm-on-save dialog,
+  save/skip/refresh, schedule, leaderboard, a player-management card) and "Sarjatilastot" tab.
+  **Game mode** is a per-tournament option in the spec (`game_mode` "short"/"long", `target_score`
+  default 13): "short" keeps the ±3 mène slider; "long" renders two 0..target steppers. It is a
+  scoring/UI concern only — it does NOT reach `tournament_build`, so reconstruction/determinism are
+  unaffected. The `output$score_entry` uiOutput is keyed on `rv$trn`, so it resets after each save. Slow Sheets I/O (save,
   refresh, create, withdraw) runs through `ExtendedTask`s wired to `input_task_button`s; `run_async()`
   dispatches each job to a **mirai** daemon, or falls back to synchronous execution when mirai isn't
   installed (so the deploy works either way — install mirai + re-snapshot to enable async).

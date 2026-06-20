@@ -93,6 +93,9 @@
     { "fi": "Pelaajalla ei ole avoimia otteluita.", "en": "The player has no open matches." },
     { "fi": "Pelaaja poistettiin ja jäljellä olevat ottelut hävittiin.", "en": "Player withdrawn; their remaining matches were forfeited." },
     { "fi": "Osallistujat päivitettiin.", "en": "Participants updated." },
-    { "fi": "Pelaajia on liian vähän lohkoihin nähden.", "en": "Too few players for the number of groups." }
+    { "fi": "Pelaajia on liian vähän lohkoihin nähden.", "en": "Too few players for the number of groups." },
+    { "fi": "Pitkä peli (pisteisiin)", "en": "Long game (to points)" },
+    { "fi": "Voittoon vaadittavat pisteet", "en": "Points needed to win" },
+    { "fi": "Syötä molempien pelaajien pisteet.", "en": "Enter both players' scores." }
   ]
 }
